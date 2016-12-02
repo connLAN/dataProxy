@@ -19,6 +19,8 @@ private:
 	//Ports
 	QMap<int, int> m_para_OuterPort;
 	QMap<int, QString> m_para_OuterAddress;
+	QMap<QString,int> m_para_IPLocalPort;
+
 private:
 	int m_nTimerRefresh = -1;
 	ZPNetwork::zp_net_Engine * engine;
@@ -26,7 +28,6 @@ private:
 	QHash<QObject *, QObject *> m_hash_Inner2Outer;
 	QHash<QObject *, QObject *> m_hash_Outer2Inner;
 	QHash<QObject *, QList< QByteArray > > penging_data;
-	QMap<QString,int> m_OurterIPLocalPort;
 public slots:
 	void slot_Message(QObject * pSource,QString );
 	//The socket error message

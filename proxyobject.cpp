@@ -63,10 +63,19 @@ void ProxyObject::initEngine()
 		else
 			engine->AddListeningAddress(keyPrefix,QHostAddress::Any,nInnerPort,false);
 
-		m_para_OuterAddress[nInnerPort] = strOuterAddress;
+		QHostInfo info = QHostInfo::fromName(strOuterAddress);
+		QList<QHostAddress> lstaddr = info.addresses();
+		if (lstaddr.size())
+		{
+			QString outerIP = lstaddr.first().toString();
+			stout<<strOuterAddress<<" IP ="<<outerIP<<"\n";
+			m_para_IPLocalPort[outerIP]	= nInnerPort;
+			m_para_OuterAddress[nInnerPort] = outerIP;
+		}
+		//m_para_OuterAddress[nInnerPort] = strOuterAddress;
 		m_para_OuterPort[nInnerPort] = nOuterPort;
 	}
-	engine->AddClientTransThreads(2,false);
+	engine->AddClientTransThreads(4,false);
 }
 
 //The socket error message
@@ -85,10 +94,10 @@ void ProxyObject::slot_NewClientConnected(QObject * clientHandle)
 		QString pn = sock->peerName();
 		if (pn.length())
 		{
-			if (m_OurterIPLocalPort.contains(pn))
+			if (m_para_IPLocalPort.contains(pn))
 			{
 				qDebug()<<"Outer side " << pn<<":"<<sock->peerPort()<<",Local Port="<<sock->localPort()<<" Connected";
-				int nLocalPort = m_OurterIPLocalPort[pn];
+				int nLocalPort = m_para_IPLocalPort[pn];
 				if (m_pendingInners[nLocalPort].size())
 				{
 					QObject * innerClient = m_pendingInners[nLocalPort].first();
@@ -134,20 +143,7 @@ void ProxyObject::slot_NewClientConnected(QObject * clientHandle)
 			{
 				qDebug()<<"Inner side "<<sock->peerAddress().toString()<<":"<<sock->peerPort()<<",Local Port="<<sock->localPort()<<" Connected";
 				m_pendingInners[localPort].push_back(clientHandle);
-				QHostInfo info = QHostInfo::fromName(m_para_OuterAddress[localPort]);
-				QList<QHostAddress> lstaddr = info.addresses();
-				if (lstaddr.size())
-				{
-					QString outerIP = lstaddr.first().toString();
-					m_OurterIPLocalPort[outerIP] = localPort;
-					engine->connectTo(QHostAddress(outerIP),m_para_OuterPort[localPort],false);
-				}
-				else
-				{
-					qWarning()<<"Address Not found in DNS.";
-					engine->KickClients(clientHandle);
-				}
-
+				engine->connectTo(QHostAddress(m_para_OuterAddress[localPort]),m_para_OuterPort[localPort],false);
 			}
 			else
 			{
@@ -165,6 +161,8 @@ void ProxyObject::slot_ClientDisconnected(QObject * clientHandle)
 	penging_data.remove(clientHandle);
 	m_hash_Inner2Outer.remove(clientHandle);
 	m_hash_Outer2Inner.remove(clientHandle);
+	foreach (int k , m_pendingInners.keys())
+		m_pendingInners[k].removeAll(clientHandle);
 }
 
 //some data arrival
@@ -188,6 +186,7 @@ void ProxyObject::timerEvent(QTimerEvent *event)
 {
 	if (event->timerId()==m_nTimerRefresh)
 	{
+		static int counter = 0;
 		fprintf (stdout,"Send %.2lf MB(%.2lfkbps) Rev %.2lf MB (%.2lfkbps)                \r",
 				g_bytesRecieved/1024.0/1024.0,
 				g_secRecieved /1024.0*8,
@@ -196,6 +195,41 @@ void ProxyObject::timerEvent(QTimerEvent *event)
 				);
 		g_secRecieved = 0;
 		g_secSent = 0;
+
+		if (++counter % 3600 == 0)
+		{
+			killTimer(m_nTimerRefresh);
+			m_nTimerRefresh = -1;
+			QTextStream stout(stdout,QIODevice::WriteOnly);
+			QString inidfile = QCoreApplication::applicationFilePath()+".ini";
+			QSettings settings(inidfile,QSettings::IniFormat);
+			int nPorts = settings.value("PROXY/Ports",0).toInt();
+			for (int i=0;i<nPorts;++i)
+			{
+				QString keyPrefix = QString().sprintf("PORT%d",i);
+				QString sk = keyPrefix + "/InnerPort";
+				int nInnerPort = settings.value(sk,0).toInt();
+
+				sk = keyPrefix + "/OuterPort";
+				int nOuterPort = settings.value(sk,0).toInt();
+
+				sk = keyPrefix + "/OuterAddress";
+				QString strOuterAddress = settings.value(sk,"").toString();
+
+				QHostInfo info = QHostInfo::fromName(strOuterAddress);
+				QList<QHostAddress> lstaddr = info.addresses();
+				if (lstaddr.size())
+				{
+					QString outerIP = lstaddr.first().toString();
+					m_para_IPLocalPort[outerIP]	= nInnerPort;
+					m_para_OuterAddress[nInnerPort] = outerIP;
+					stout<<strOuterAddress<<" IP ="<<outerIP<<"\n";
+				}
+				//m_para_OuterAddress[nInnerPort] = strOuterAddress;
+				m_para_OuterPort[nInnerPort] = nOuterPort;
+			}
+			m_nTimerRefresh = startTimer(1000);
+		}
 
 	}
 }
