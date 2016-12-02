@@ -4,7 +4,7 @@
 #include <QObject>
 #include <QList>
 #include <QHash>
-
+#include <QMap>
 #include "network/zp_net_threadpool.h"
 
 class ProxyObject : public QObject
@@ -16,12 +16,17 @@ public:
 protected:
 	void timerEvent(QTimerEvent *event);
 private:
+	//Ports
+	QMap<int, int> m_para_OuterPort;
+	QMap<int, QString> m_para_OuterAddress;
+private:
 	int m_nTimerRefresh = -1;
 	ZPNetwork::zp_net_Engine * engine;
-	QList<QObject *>			m_list_pendingInners;
+	QHash<int, QList<QObject *> >	m_pendingInners;
 	QHash<QObject *, QObject *> m_hash_Inner2Outer;
 	QHash<QObject *, QObject *> m_hash_Outer2Inner;
 	QHash<QObject *, QList< QByteArray > > penging_data;
+	QMap<QString,int> m_OurterIPLocalPort;
 public slots:
 	void slot_Message(QObject * pSource,QString );
 	//The socket error message

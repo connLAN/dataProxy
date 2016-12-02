@@ -1,7 +1,9 @@
 #include "proxyobject.h"
+#include <QCoreApplication>
 #include <QDebug>
 #include <QSettings>
 #include <QString>
+#include <QTextStream>
 #include <QTcpSocket>
 #include <QTimerEvent>
 #include <QHostInfo>
@@ -30,7 +32,40 @@ void ProxyObject::slot_Message(QObject * pSource,QString message )
 }
 void ProxyObject::initEngine()
 {
-	engine->AddListeningAddress("SQLServer",QHostAddress("127.0.0.1"),1433,false);
+	QTextStream stout(stdout,QIODevice::WriteOnly);
+	QString inidfile = QCoreApplication::applicationFilePath()+".ini";
+	QSettings settings(inidfile,QSettings::IniFormat);
+	int nPorts = settings.value("PROXY/Ports",0).toInt();
+	stout<<"Reading config from : "<<inidfile<<"\n";
+	stout<<"PROXY/Ports = "<<nPorts<<"\n";
+	for (int i=0;i<nPorts;++i)
+	{
+		stout<<"PORTS"<<i<<":\n";
+		QString keyPrefix = QString().sprintf("PORT%d",i);
+		QString sk = keyPrefix + "/InnerPort";
+		int nInnerPort = settings.value(sk,0).toInt();
+		stout<<sk<<"="<<nInnerPort<<"\n";
+
+		sk = keyPrefix + "/InnerAddress";
+		QString strInnerAddress = settings.value(sk,"").toString();
+		stout<<sk<<"="<<strInnerAddress<<"\n";
+
+		sk = keyPrefix + "/OuterPort";
+		int nOuterPort = settings.value(sk,0).toInt();
+		stout<<sk<<"="<<nOuterPort<<"\n";
+
+		sk = keyPrefix + "/OuterAddress";
+		QString strOuterAddress = settings.value(sk,"").toString();
+		stout<<sk<<"="<<strOuterAddress<<"\n";
+
+		if (strInnerAddress.length())
+			engine->AddListeningAddress(keyPrefix,QHostAddress(strInnerAddress),nInnerPort,false);
+		else
+			engine->AddListeningAddress(keyPrefix,QHostAddress::Any,nInnerPort,false);
+
+		m_para_OuterAddress[nInnerPort] = strOuterAddress;
+		m_para_OuterPort[nInnerPort] = nOuterPort;
+	}
 	engine->AddClientTransThreads(2,false);
 }
 
@@ -50,45 +85,73 @@ void ProxyObject::slot_NewClientConnected(QObject * clientHandle)
 		QString pn = sock->peerName();
 		if (pn.length())
 		{
-			qDebug()<<"Outer side " << pn<<":"<<sock->peerPort()<<" Connected";
-			if (m_list_pendingInners.size())
+			if (m_OurterIPLocalPort.contains(pn))
 			{
-				QObject * innerClient = m_list_pendingInners.first();
-				m_list_pendingInners.pop_front();
-				m_hash_Inner2Outer[innerClient] = clientHandle;
-				m_hash_Outer2Inner[clientHandle] = innerClient;
-				if (penging_data.contains(innerClient))
+				qDebug()<<"Outer side " << pn<<":"<<sock->peerPort()<<",Local Port="<<sock->localPort()<<" Connected";
+				int nLocalPort = m_OurterIPLocalPort[pn];
+				if (m_pendingInners[nLocalPort].size())
 				{
-					while (penging_data[innerClient].empty()==false)
+					QObject * innerClient = m_pendingInners[nLocalPort].first();
+					m_pendingInners[nLocalPort].pop_front();
+					m_hash_Inner2Outer[innerClient] = clientHandle;
+					m_hash_Outer2Inner[clientHandle] = innerClient;
+					if (penging_data.contains(innerClient))
 					{
-						engine->SendDataToClient(clientHandle,penging_data[innerClient].first());
-						penging_data[innerClient].pop_front();
+						while (penging_data[innerClient].empty()==false)
+						{
+							engine->SendDataToClient(clientHandle,penging_data[innerClient].first());
+							penging_data[innerClient].pop_front();
+						}
+						penging_data.remove(innerClient);
 					}
-					penging_data.remove(innerClient);
+					if (penging_data.contains(clientHandle))
+					{
+						while (penging_data[clientHandle].empty()==false)
+						{
+							engine->SendDataToClient(innerClient,penging_data[clientHandle].first());
+							penging_data[clientHandle].pop_front();
+						}
+						penging_data.remove(clientHandle);
+					}
 				}
-				if (penging_data.contains(clientHandle))
+				else
 				{
-					while (penging_data[clientHandle].empty()==false)
-					{
-						engine->SendDataToClient(innerClient,penging_data[clientHandle].first());
-						penging_data[clientHandle].pop_front();
-					}
-					penging_data.remove(clientHandle);
+					qWarning()<<"Incomming Out connection has no pending local peer. Port="<<nLocalPort;
+					engine->KickClients(clientHandle);
 				}
+
+			}
+			else
+			{
+				qWarning()<<"Incomming Out connection "<<pn<<"has no local Port";
+				engine->KickClients(clientHandle);
 			}
 		}
 		else
 		{
-			qDebug()<<"Inner side "<<sock->peerAddress().toString()<<":"<<sock->peerPort()<<" Connected";
-			m_list_pendingInners.push_back(clientHandle);
-			QHostInfo info = QHostInfo::fromName("hds150188277.my3w.com");
-			QList<QHostAddress> lstaddr = info.addresses();
-			qDebug()<<lstaddr.size();
-			if (lstaddr.size())
-				engine->connectTo(QHostAddress(lstaddr.first().toString()),1433,false);
+			int localPort = sock->localPort();
+			if (m_para_OuterPort.contains(localPort))
+			{
+				qDebug()<<"Inner side "<<sock->peerAddress().toString()<<":"<<sock->peerPort()<<",Local Port="<<sock->localPort()<<" Connected";
+				m_pendingInners[localPort].push_back(clientHandle);
+				QHostInfo info = QHostInfo::fromName(m_para_OuterAddress[localPort]);
+				QList<QHostAddress> lstaddr = info.addresses();
+				if (lstaddr.size())
+				{
+					QString outerIP = lstaddr.first().toString();
+					m_OurterIPLocalPort[outerIP] = localPort;
+					engine->connectTo(QHostAddress(outerIP),m_para_OuterPort[localPort],false);
+				}
+				else
+				{
+					qWarning()<<"Address Not found in DNS.";
+					engine->KickClients(clientHandle);
+				}
+
+			}
 			else
 			{
-				qWarning()<<"Address Not found in DNS.";
+				qWarning()<<"Local port "<<localPort<<" Is not valid.";
 				engine->KickClients(clientHandle);
 			}
 		}
