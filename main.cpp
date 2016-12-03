@@ -5,15 +5,9 @@
 #include "proxyobject.h"
 
 STMsgLogger::st_logger g_logger;
-QTextStream stream(stdout,QIODevice::WriteOnly);
 void stMessageOutput(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
 	g_logger.MessageOutput(type,context,msg);
-
-	QDateTime dtm = QDateTime::currentDateTime();
-	QString msgOut = dtm.toString("yyyy-MM-dd HH:mm:ss.zzz") + ">" + msg;
-	stream << msgOut <<"\n";
-	stream.flush();
 }
 
 int main(int argc, char *argv[])

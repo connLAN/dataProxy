@@ -38,8 +38,6 @@ public slots:
 	void slot_ClientDisconnected(QObject * /*clientHandle*/);
 	//some data arrival
 	void slot_Data_recieved(QObject *  /*clientHandle*/,QByteArray  /*datablock*/ );
-	//a block of data has been successfuly sent
-	void slot_Data_transferred(QObject *   /*clientHandle*/,qint64 /*bytes sent*/);
 };
 
 #endif // PROXYOBJECT_H

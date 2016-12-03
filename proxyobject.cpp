@@ -16,19 +16,21 @@ ProxyObject::ProxyObject(QObject *parent)
 	: QObject(parent)
 	, engine(new ZPNetwork::zp_net_Engine(2048,this))
 {
-	connect (engine, &zp_net_Engine::evt_Message, this, &ProxyObject::slot_Message );
-	connect (engine, &zp_net_Engine::evt_SocketError, this, &ProxyObject::slot_SocketError );
-	connect (engine, &zp_net_Engine::evt_NewClientConnected, this, &ProxyObject::slot_NewClientConnected );
-	connect (engine, &zp_net_Engine::evt_ClientDisconnected, this, &ProxyObject::slot_ClientDisconnected );
-	connect (engine, &zp_net_Engine::evt_Data_recieved, this, &ProxyObject::slot_Data_recieved );
-	connect (engine, &zp_net_Engine::evt_Data_transferred, this, &ProxyObject::slot_Data_transferred );
+	connect (engine, &zp_net_Engine::evt_Message, this, &ProxyObject::slot_Message ,Qt::QueuedConnection);
+	connect (engine, &zp_net_Engine::evt_SocketError, this, &ProxyObject::slot_SocketError,Qt::QueuedConnection );
+	connect (engine, &zp_net_Engine::evt_NewClientConnected, this, &ProxyObject::slot_NewClientConnected,Qt::QueuedConnection );
+	connect (engine, &zp_net_Engine::evt_ClientDisconnected, this, &ProxyObject::slot_ClientDisconnected ,Qt::QueuedConnection);
+	connect (engine, &zp_net_Engine::evt_Data_recieved, this, &ProxyObject::slot_Data_recieved ,Qt::QueuedConnection);
 	initEngine();
 	m_nTimerRefresh = startTimer(1000);
 }
 void ProxyObject::slot_Message(QObject * pSource,QString message )
 {
 	QString msg = message + tr(",Source=%1").arg((quint64)pSource);
-	qDebug()<<msg;
+	QTextStream stout(stdout,QIODevice::WriteOnly);
+	QDateTime dtm = QDateTime::currentDateTime();
+	QString msgOut = dtm.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + msg;
+	stout<<msgOut<<"\n";
 }
 void ProxyObject::initEngine()
 {
@@ -126,14 +128,14 @@ void ProxyObject::slot_NewClientConnected(QObject * clientHandle)
 				else
 				{
 					qWarning()<<"Incomming Out connection has no pending local peer. Port="<<nLocalPort;
-					engine->KickClients(clientHandle);
+					//engine->KickClients(clientHandle);
 				}
 
 			}
 			else
 			{
 				qWarning()<<"Incomming Out connection "<<pn<<"has no local Port";
-				engine->KickClients(clientHandle);
+				//engine->KickClients(clientHandle);
 			}
 		}
 		else
@@ -176,18 +178,12 @@ void ProxyObject::slot_Data_recieved(QObject *  clientHandle,QByteArray  datablo
 		penging_data[clientHandle].push_back(datablock);
 }
 
-//a block of data has been successfuly sent
-void ProxyObject::slot_Data_transferred(QObject *   clientHandle,qint64 bytes_sent)
-{
-
-}
-
 void ProxyObject::timerEvent(QTimerEvent *event)
 {
 	if (event->timerId()==m_nTimerRefresh)
 	{
 		static int counter = 0;
-		fprintf (stdout,"Send %.2lf MB(%.2lfkbps) Rev %.2lf MB (%.2lfkbps)                \r",
+		fprintf (stdout,"Send %.2lf MB(%.2lfkbps) Rev %.2lf MB (%.2lfkbps)              \r",
 				g_bytesRecieved/1024.0/1024.0,
 				g_secRecieved /1024.0*8,
 				g_bytesSent/1024.0/1024.0,
