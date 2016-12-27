@@ -24,20 +24,19 @@ private:
 private:
 	int m_nTimerRefresh = -1;
 	ZPNetwork::zp_net_Engine * engine;
-	QHash<int, QList<QObject *> >	m_pendingInners;
 	QHash<QObject *, QObject *> m_hash_Inner2Outer;
 	QHash<QObject *, QObject *> m_hash_Outer2Inner;
 	QHash<QObject *, QList< QByteArray > > penging_data;
 public slots:
 	void slot_Message(QObject * pSource,QString );
 	//The socket error message
-	void slot_SocketError(QObject * senderSock ,QAbstractSocket::SocketError socketError);
+	void slot_SocketError(QObject * senderSock ,QAbstractSocket::SocketError socketError,quint64);
 	//this event indicates new client connected.
-	void slot_NewClientConnected(QObject * /*clientHandle*/);
+	void slot_NewClientConnected(QObject * /*clientHandle*/,quint64);
 	//this event indicates a client disconnected.
-	void slot_ClientDisconnected(QObject * /*clientHandle*/);
+	void slot_ClientDisconnected(QObject * /*clientHandle*/,quint64);
 	//some data arrival
-	void slot_Data_recieved(QObject *  /*clientHandle*/,QByteArray  /*datablock*/ );
+	void slot_Data_recieved(QObject *  /*clientHandle*/,QByteArray  /*datablock*/ ,quint64);
 };
 
 #endif // PROXYOBJECT_H

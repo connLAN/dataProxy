@@ -81,29 +81,28 @@ void ProxyObject::initEngine()
 }
 
 //The socket error message
-void ProxyObject::slot_SocketError(QObject * senderSock ,QAbstractSocket::SocketError socketError)
+void ProxyObject::slot_SocketError(QObject * senderSock ,QAbstractSocket::SocketError socketError,quint64)
 {
 	QString msg = tr(",Source=%1, SockError = %2").arg((quint64)senderSock).arg((quint64)socketError);
 	qWarning()<<msg;
 }
 
 //this event indicates new client connected.
-void ProxyObject::slot_NewClientConnected(QObject * clientHandle)
+void ProxyObject::slot_NewClientConnected(QObject * clientHandle,quint64 extraData)
 {
 	QTcpSocket * sock = qobject_cast<QTcpSocket *> (clientHandle);
 	if (sock)
 	{
 		QString pn = sock->peerName();
-		if (pn.length())
+		if (extraData)
 		{
 			if (m_para_IPLocalPort.contains(pn))
 			{
 				qDebug()<<"Outer side " << pn<<":"<<sock->peerPort()<<",Local Port="<<sock->localPort()<<" Connected";
 				int nLocalPort = m_para_IPLocalPort[pn];
-				if (m_pendingInners[nLocalPort].size())
+				QObject * innerClient = reinterpret_cast<QObject *> (extraData);
+				if (innerClient)
 				{
-					QObject * innerClient = m_pendingInners[nLocalPort].first();
-					m_pendingInners[nLocalPort].pop_front();
 					m_hash_Inner2Outer[innerClient] = clientHandle;
 					m_hash_Outer2Inner[clientHandle] = innerClient;
 					if (penging_data.contains(innerClient))
@@ -144,8 +143,7 @@ void ProxyObject::slot_NewClientConnected(QObject * clientHandle)
 			if (m_para_OuterPort.contains(localPort))
 			{
 				qDebug()<<"Inner side "<<sock->peerAddress().toString()<<":"<<sock->peerPort()<<",Local Port="<<sock->localPort()<<" Connected";
-				m_pendingInners[localPort].push_back(clientHandle);
-				engine->connectTo(QHostAddress(m_para_OuterAddress[localPort]),m_para_OuterPort[localPort],false);
+				engine->connectTo(QHostAddress(m_para_OuterAddress[localPort]),m_para_OuterPort[localPort],false,reinterpret_cast<quint64>(sock));
 			}
 			else
 			{
@@ -158,17 +156,15 @@ void ProxyObject::slot_NewClientConnected(QObject * clientHandle)
 }
 
 //this event indicates a client disconnected.
-void ProxyObject::slot_ClientDisconnected(QObject * clientHandle)
+void ProxyObject::slot_ClientDisconnected(QObject * clientHandle,quint64)
 {
 	penging_data.remove(clientHandle);
 	m_hash_Inner2Outer.remove(clientHandle);
 	m_hash_Outer2Inner.remove(clientHandle);
-	foreach (int k , m_pendingInners.keys())
-		m_pendingInners[k].removeAll(clientHandle);
 }
 
 //some data arrival
-void ProxyObject::slot_Data_recieved(QObject *  clientHandle,QByteArray  datablock )
+void ProxyObject::slot_Data_recieved(QObject *  clientHandle,QByteArray  datablock,quint64 )
 {
 	if (m_hash_Inner2Outer.contains(clientHandle))
 		engine->SendDataToClient(m_hash_Inner2Outer[clientHandle],datablock);
