@@ -85,6 +85,16 @@ void ProxyObject::slot_SocketError(QObject * senderSock ,QAbstractSocket::Socket
 {
 	QString msg = tr(",Source=%1, SockError = %2").arg((quint64)senderSock).arg((quint64)socketError);
 	qWarning()<<msg;
+	if (m_hash_Inner2Outer.contains(senderSock))
+	{
+		engine->KickClients(m_hash_Inner2Outer[senderSock]);
+		m_hash_Inner2Outer.remove(senderSock);
+	}
+	else if (m_hash_Outer2Inner.contains(senderSock))
+	{
+		engine->KickClients(m_hash_Outer2Inner[senderSock]);
+		m_hash_Outer2Inner.remove(senderSock);
+	}
 }
 
 //this event indicates new client connected.
@@ -159,8 +169,16 @@ void ProxyObject::slot_NewClientConnected(QObject * clientHandle,quint64 extraDa
 void ProxyObject::slot_ClientDisconnected(QObject * clientHandle,quint64)
 {
 	penging_data.remove(clientHandle);
-	m_hash_Inner2Outer.remove(clientHandle);
-	m_hash_Outer2Inner.remove(clientHandle);
+	if (m_hash_Inner2Outer.contains(clientHandle))
+	{
+		engine->KickClients(m_hash_Inner2Outer[clientHandle]);
+		m_hash_Inner2Outer.remove(clientHandle);
+	}
+	else if (m_hash_Outer2Inner.contains(clientHandle))
+	{
+		engine->KickClients(m_hash_Outer2Inner[clientHandle]);
+		m_hash_Outer2Inner.remove(clientHandle);
+	}
 }
 
 //some data arrival
