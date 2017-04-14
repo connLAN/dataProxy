@@ -263,11 +263,10 @@ void ProxyObject::timerEvent(QTimerEvent *event)
 		}
         //kick out clients when the other side is disconnected and
         //no data left to be recieved.
-        if (counter % 30 ==0)
         {
             QList<QObject *> timeoutobjs;
             foreach(QObject * obj, pending_kick.keys())
-                if (pending_kick[obj].secsTo(QDateTime::currentDateTime())>30)
+                if (pending_kick[obj].secsTo(QDateTime::currentDateTime())>1)
                     timeoutobjs.push_back(obj);
             foreach(QObject * obj, pending_kick.keys())
             {
