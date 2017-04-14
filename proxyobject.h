@@ -1,6 +1,6 @@
 #ifndef PROXYOBJECT_H
 #define PROXYOBJECT_H
-
+#include <QDateTime>
 #include <QObject>
 #include <QList>
 #include <QHash>
@@ -26,7 +26,9 @@ private:
 	ZPNetwork::zp_net_Engine * engine;
 	QHash<QObject *, QObject *> m_hash_Inner2Outer;
 	QHash<QObject *, QObject *> m_hash_Outer2Inner;
-	QHash<QObject *, QList< QByteArray > > penging_data;
+    QHash<QObject *, QList< QByteArray > > pending_data;
+    //Hash table for single-side disconnect protection
+    QHash<QObject *, QDateTime > pending_kick;
 public slots:
 	void slot_Message(QObject * pSource,QString );
 	//The socket error message

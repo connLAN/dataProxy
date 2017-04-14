@@ -87,13 +87,22 @@ void ProxyObject::slot_SocketError(QObject * senderSock ,QAbstractSocket::Socket
 	qWarning()<<msg;
 	if (m_hash_Inner2Outer.contains(senderSock))
 	{
-		engine->KickClients(m_hash_Inner2Outer[senderSock]);
+        //engine->KickClients(m_hash_Inner2Outer[senderSock]);
+        //!In some case, the sender has a fast connection, while the reciever is slow.
+        //!Because of the deep cache method in engine, the sender will cut off tcp connection when
+        //!It "feels" that sending operation is finished. However, at the time sender closed connection,
+        //! the other side is still busy recieveing data. In this case, recieving progress will be
+        //! terminate abnormally.
+        //! The solution blew can remember the reciever's sock, with a time stamp
+        //! In ontimer() function, we will check timestamp and disconnect reciever.
+        pending_kick[m_hash_Inner2Outer[senderSock]] = QDateTime::currentDateTime();
 		m_hash_Inner2Outer.remove(senderSock);
 	}
 	else if (m_hash_Outer2Inner.contains(senderSock))
 	{
-		engine->KickClients(m_hash_Outer2Inner[senderSock]);
-		m_hash_Outer2Inner.remove(senderSock);
+        //engine->KickClients(m_hash_Outer2Inner[senderSock]);
+        pending_kick[m_hash_Inner2Outer[senderSock]] = QDateTime::currentDateTime();
+        m_hash_Outer2Inner.remove(senderSock);
 	}
 }
 
@@ -115,23 +124,23 @@ void ProxyObject::slot_NewClientConnected(QObject * clientHandle,quint64 extraDa
 				{
 					m_hash_Inner2Outer[innerClient] = clientHandle;
 					m_hash_Outer2Inner[clientHandle] = innerClient;
-					if (penging_data.contains(innerClient))
+                    if (pending_data.contains(innerClient))
 					{
-						while (penging_data[innerClient].empty()==false)
+                        while (pending_data[innerClient].empty()==false)
 						{
-							engine->SendDataToClient(clientHandle,penging_data[innerClient].first());
-							penging_data[innerClient].pop_front();
+                            engine->SendDataToClient(clientHandle,pending_data[innerClient].first());
+                            pending_data[innerClient].pop_front();
 						}
-						penging_data.remove(innerClient);
+                        pending_data.remove(innerClient);
 					}
-					if (penging_data.contains(clientHandle))
+                    if (pending_data.contains(clientHandle))
 					{
-						while (penging_data[clientHandle].empty()==false)
+                        while (pending_data[clientHandle].empty()==false)
 						{
-							engine->SendDataToClient(innerClient,penging_data[clientHandle].first());
-							penging_data[clientHandle].pop_front();
+                            engine->SendDataToClient(innerClient,pending_data[clientHandle].first());
+                            pending_data[clientHandle].pop_front();
 						}
-						penging_data.remove(clientHandle);
+                        pending_data.remove(clientHandle);
 					}
 				}
 				else
@@ -168,15 +177,24 @@ void ProxyObject::slot_NewClientConnected(QObject * clientHandle,quint64 extraDa
 //this event indicates a client disconnected.
 void ProxyObject::slot_ClientDisconnected(QObject * clientHandle,quint64)
 {
-	penging_data.remove(clientHandle);
+    pending_data.remove(clientHandle);
 	if (m_hash_Inner2Outer.contains(clientHandle))
 	{
-		engine->KickClients(m_hash_Inner2Outer[clientHandle]);
+        //engine->KickClients(m_hash_Inner2Outer[clientHandle]);
+        //!In some case, the sender has a fast connection, while the reciever is slow.
+        //!Because of the deep cache method in engine, the sender will cut off tcp connection when
+        //!It "feels" that sending operation is finished. However, at the time sender closed connection,
+        //! the other side is still busy recieveing data. In this case, recieving progress will be
+        //! terminate abnormally.
+        //! The solution blew can remember the reciever's sock, with a time stamp
+        //! In ontimer() function, we will check timestamp and disconnect reciever.
+        pending_kick[m_hash_Inner2Outer[clientHandle]] = QDateTime::currentDateTime();
 		m_hash_Inner2Outer.remove(clientHandle);
 	}
 	else if (m_hash_Outer2Inner.contains(clientHandle))
 	{
-		engine->KickClients(m_hash_Outer2Inner[clientHandle]);
+        //engine->KickClients(m_hash_Outer2Inner[clientHandle]);
+        pending_kick[m_hash_Outer2Inner[clientHandle]] = QDateTime::currentDateTime();
 		m_hash_Outer2Inner.remove(clientHandle);
 	}
 }
@@ -188,8 +206,11 @@ void ProxyObject::slot_Data_recieved(QObject *  clientHandle,QByteArray  datablo
 		engine->SendDataToClient(m_hash_Inner2Outer[clientHandle],datablock);
 	else if (m_hash_Outer2Inner.contains(clientHandle))
 		engine->SendDataToClient(m_hash_Outer2Inner[clientHandle],datablock);
-	else
-		penging_data[clientHandle].push_back(datablock);
+    else if (pending_kick.contains(clientHandle)==false)
+        pending_data[clientHandle].push_back(datablock);
+    //Keep timestamp fresh
+    if (pending_kick.contains(clientHandle))
+        pending_kick[clientHandle] = QDateTime::currentDateTime();
 }
 
 void ProxyObject::timerEvent(QTimerEvent *event)
@@ -240,6 +261,21 @@ void ProxyObject::timerEvent(QTimerEvent *event)
 			}
 			m_nTimerRefresh = startTimer(1000);
 		}
+        //kick out clients when the other side is disconnected and
+        //no data left to be recieved.
+        if (counter % 30 ==0)
+        {
+            QList<QObject *> timeoutobjs;
+            foreach(QObject * obj, pending_kick.keys())
+                if (pending_kick[obj].secsTo(QDateTime::currentDateTime())>30)
+                    timeoutobjs.push_back(obj);
+            foreach(QObject * obj, pending_kick.keys())
+            {
+                pending_kick.remove(obj);
+                engine->KickClients(obj);
+            }
+
+        }
 
 	}
 }
