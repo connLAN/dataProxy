@@ -21,7 +21,8 @@ ProxyObject::ProxyObject(QObject *parent)
 	connect (engine, &zp_net_Engine::evt_NewClientConnected, this, &ProxyObject::slot_NewClientConnected,Qt::QueuedConnection );
 	connect (engine, &zp_net_Engine::evt_ClientDisconnected, this, &ProxyObject::slot_ClientDisconnected ,Qt::QueuedConnection);
 	connect (engine, &zp_net_Engine::evt_Data_recieved, this, &ProxyObject::slot_Data_recieved ,Qt::QueuedConnection);
-	initEngine();
+    connect (engine, &zp_net_Engine::evt_Data_transferred, this, &ProxyObject::slot_Data_transferred ,Qt::QueuedConnection);
+    initEngine();
 	m_nTimerRefresh = startTimer(1000);
 }
 void ProxyObject::slot_Message(QObject * pSource,QString message )
@@ -208,7 +209,10 @@ void ProxyObject::slot_Data_recieved(QObject *  clientHandle,QByteArray  datablo
 		engine->SendDataToClient(m_hash_Outer2Inner[clientHandle],datablock);
     else if (pending_kick.contains(clientHandle)==false)
         pending_data[clientHandle].push_back(datablock);
-    //Keep timestamp fresh
+}
+void ProxyObject::slot_Data_transferred(QObject *  clientHandle,qint64 /*bytes sent*/, quint64 extraData)
+{
+   //Keep timestamp fresh
     if (pending_kick.contains(clientHandle))
         pending_kick[clientHandle] = QDateTime::currentDateTime();
 }
